@@ -6,9 +6,12 @@ import json
 
 import streamlit as st
 import openai
-from openai.types.beta.threads import MessageContentImageFile
+from openai.types.beta.threads.image_file import ImageFile
 from tools import TOOL_MAP
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
 azure_openai_key = os.environ.get("AZURE_OPENAI_KEY")
@@ -39,7 +42,14 @@ def create_thread(content, file):
     ]
     if file is not None:
         messages[0].update({"file_ids": [file.id]})
-    thread = client.beta.threads.create(messages=messages)
+    thread = client.beta.threads.create(
+        messages=messages,
+        tool_resources={
+            "file_search": {
+                "vector_store_ids": ["vs_J5tKvVub1WYzTjHf58KsmYgl"]
+            }
+        }
+    )
     return thread
 
 
@@ -48,7 +58,7 @@ def create_message(thread, content, file):
     if file is not None:
         file_ids.append(file.id)
     client.beta.threads.messages.create(
-        thread_id=thread.id, role="user", content=content, file_ids=file_ids
+        thread_id=thread.id, role="user", content=content
     )
 
 
@@ -72,7 +82,7 @@ def get_message_value_list(messages):
     for message in messages:
         message_content = ""
         print(message)
-        if not isinstance(message, MessageContentImageFile):
+        if not isinstance(message, ImageFile):
             message_content = message.content[0].text
             annotations = message_content.annotations
         else:
@@ -87,9 +97,9 @@ def get_message_value_list(messages):
             )
 
             if file_citation := getattr(annotation, "file_citation", None):
-                cited_file = client.files.retrieve(file_citation.file_id)
+                cited_file = client.files.retrieve(file_id=file_citation.file_id)
                 citations.append(
-                    f"[{index}] {file_citation.quote} from {cited_file.filename}"
+                    f"[{index}] from {cited_file.filename}"
                 )
             elif file_path := getattr(annotation, "file_path", None):
                 link_tag = create_file_link(
